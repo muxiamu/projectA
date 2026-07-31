@@ -4,6 +4,7 @@ from urllib.request import urlretrieve
 import json
 from config.config import *
 import logging
+from pathlib import Path
 
 
 logging.basicConfig(
@@ -17,11 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# 构造url
-params = {
-    "limit": 1,
-    "page": 1
-}
+
 
 def request_response(params):
     """
@@ -38,7 +35,7 @@ def request_response(params):
             return []
 
         if isinstance(response, list):
-            return response.json()
+            return response
         else:
             logger.warning(f"未知的响应格式: {type(response)}")
 
@@ -67,12 +64,42 @@ def request_response(params):
         return []
 
 
-# open_tag_library
-if os.path.getsize(tag_library_dir / tag_library_name) == 0:
-            tag_library = {}
-else: 
-    with open(tag_library_dir / tag_library_name, 'r', encoding='utf-8') as f:
-        tag_library = json.load(f)
+def load_tags_library(tag_library_dir, tag_library_name):
+    """
+    加载标签库  
+    """
+    file_path = Path(tag_library_dir) / tag_library_name
+
+    if not file_path.exists():
+        return {}
+    if file_path.stat().st_size == 0:
+        return {}
+
+    try:
+        with open(file_path, 'r', encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            else:
+                logger.warning(f"警告：{file_path}格式错误，已重置！")
+                return {}
+    except json.JSONDecodeError as e:
+        logger.warning(f"警告:{file_path}已损坏{e}，已重置！")
+        return {}
+
+
+def save_tags_library(tag_library_dir, tag_library_name, tag_library):
+    """
+    保存标签库到 JSON 文件
+    """
+    file_path = Path(tag_library_dir) / tag_library_name
+    try:
+        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(tag_library, f, indent=4, ensure_ascii=False)
+        logger.info(f"标签库已保存至{file_path}!")
+    except Exception as e:
+        logger.warning(f"标签库保存失败: {e}!")
 
 
 def download_single_image(post_data, download_dir):
@@ -86,8 +113,26 @@ def download_single_image(post_data, download_dir):
     file_path = download_dir / file_name
 
     # 下载图片
-    urlretrieve(image_url, file_path)
-    return file_name
+    try:
+        response = requests.get(image_url, stream=True, timeout=timeout)
+        response.raise_for_status()
+
+        with open(file_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+
+        logger.info(f"{file_name}下载完成!")
+        return file_name
+    except requests.exceptions.Timeout:
+        logger.warning(f"下载超时！")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.warning(f"网络连接断开！")
+        return None
+    except Exception as e:
+        logger.warning(f"下载失败: {e}！")
+        return None
 
 
 def ask_for_evaluate():
@@ -118,12 +163,8 @@ def calculate_tag_updates(tag_str, is_liked):
         if is_liked:
             updates[tag] = 1
         else:
-            updates[tag] = 0
+            updates[tag] = -1   
     return updates
-
-
-with open(tag_library_dir / tag_library_name, 'w', encoding='utf-8') as f:
-    json.dump(tag_library, f, indent=4, ensure_ascii=False)
 
 
 def process_one_post(post_data, tag_library, download_dir):
@@ -131,7 +172,12 @@ def process_one_post(post_data, tag_library, download_dir):
     处理一张图片：下载 → 评价 → 更新标签库
     """
     # 下载图片
-    download_single_image(post_data, download_dir)
+    file_name = download_single_image(post_data, download_dir)
+
+    if file_name is None:
+        logger.warning(f"跳过本次，继续下一张！")
+        return tag_library
+
 
     # 获取标签
     tags_str = post_data.get('tags', '')
@@ -150,6 +196,23 @@ def process_one_post(post_data, tag_library, download_dir):
     return tag_library
 
 
-
 if __name__ == "__main__":
-    pass
+    # 构造url
+    params = {
+        "limit": 3,
+        "page": 1
+    }
+
+    # 加载标签库
+    tags_library = load_tags_library(tag_library_dir, tag_library_name)
+
+    # 请求回应
+    response = request_response(params)
+
+    # 处理回应
+    for post_data in response:
+        tags_library = process_one_post(post_data, tags_library, download_dir)
+        save_tags_library(tag_library_dir, tag_library_name, tags_library)
+
+    # 更新库文件
+    save_tags_library(tag_library_dir, tag_library_name, tags_library)
