@@ -6,6 +6,9 @@ from core.tag_manager import load_tags_library, save_tags_library, calculate_tag
 from core.evaluator import ask_for_evaluate  # 注意：这个将会被 UI 的按钮取代，稍后我们会改造它
 from config.config import *
 from core.logger import logger
+from PIL import Image
+import requests
+from io import BytesIO
 
 # 设置 CustomTkinter 外观模式（Dark/Light/System）
 ctk.set_appearance_mode("System")
@@ -14,8 +17,8 @@ ctk.set_default_color_theme("blue")
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("🎨 个性化图片推荐系统")
-        self.geometry("600x500")
+        self.title("ProjectA")
+        self.geometry("720x480")
 
         # ---------- 状态变量 ----------
         self.posts = []               # 当前拉取的图片列表
@@ -25,13 +28,65 @@ class App(ctk.CTk):
 
         # ---------- 界面布局 ----------
         # 1. 顶部标题
-        self.title_label = ctk.CTkLabel(self, text="图片推荐引擎", font=("Arial", 24, "bold"))
+        self.title_label = ctk.CTkLabel(self, text="测试模式", font=("Arial", 24, "bold"))
         self.title_label.pack(pady=10)
 
+        # 2.图片展示区
+        self.image_display_frame = ctk.CTkFrame(
+            self,
+            fg_color=("gray90", "gray20"),
+            corner_radius = 15,
+            border_width = 2,
+            border_color = ("blue", "cyan"),
+        )
+        self.image_display_frame.pack(
+            padx = 10,
+            pady = 10,
+            fill = "both",
+            expand = True
+        )
+
+        self.image_display_label = ctk.CTkLabel(
+            self.image_display_frame,
+            fg_color= ("#EAEAEA", "#A8A8A8"),
+            border_color = ("#F79E9E", "#DA5E5E"),
+            border_width= 2,
+            corner_radius= 15,
+            text= "图片展示标签",
+            width= 300,
+            height= 300,
+        )
+        self.image_display_label.pack(
+            padx = 10,
+            pady = 10,
+            # fill = "y",
+            expand = True
+        )
+
+        self.load_default_image()
+
+        # local_img = Image.open(r"../icon/default.jpg")
+        # img_width, img_height = local_img.size
+        # my_image = ctk.CTkImage(
+        #     light_image=local_img, 
+        #     size=(img_width, img_height)
+        #     )
+        # params = {"limit": 1, "page": 1}  # 你可以从config读取
+        # posts = request_response(params)
+        # post = posts[0]['sample_url']
+        # response = requests.get(url=post, timeout=10)
+        # img_data = BytesIO(response.content)
+        # pil_image = Image.open(img_data)
+        # my_image = ctk.CTkImage(
+        #     light_image=pil_image
+        # )
+        # self.display_frame = ctk.CTkLabel(self, image=my_image, text=None)
+        # self.display_frame.pack(padx=20, pady=10, fill="both", expand=True)
+
         # 2. 信息展示区（显示标签和ID）
-        self.info_textbox = ctk.CTkTextbox(self, height=100, state="disabled", wrap="word")
-        self.info_textbox.pack(padx=20, pady=10, fill="x")
-        self.update_info_box("👋 点击下方【获取图片】开始你的推荐之旅")
+        # self.info_textbox = ctk.CTkTextbox(self, height=100, state="disabled", wrap="word")
+        # self.info_textbox.pack(padx=20, pady=10, fill="x")
+        # self.update_info_box("👋 点击下方【获取图片】开始你的推荐之旅")
 
         # 3. 进度与状态栏
         self.progress_label = ctk.CTkLabel(self, text="等待开始...", font=("Arial", 12))
@@ -41,13 +96,13 @@ class App(ctk.CTk):
         self.button_frame = ctk.CTkFrame(self)
         self.button_frame.pack(pady=15)
 
-        self.fetch_btn = ctk.CTkButton(self.button_frame, text="📥 获取一批图片", command=self.fetch_posts, width=150)
+        self.fetch_btn = ctk.CTkButton(self.button_frame, text="📥 获取图片", command=self.fetch_posts, width=150)
         self.fetch_btn.pack(side="left", padx=10)
 
-        self.like_btn = ctk.CTkButton(self.button_frame, text="❤️ 喜欢 (+1)", command=lambda: self.rate_post(True), state="disabled", fg_color="green", width=120)
+        self.like_btn = ctk.CTkButton(self.button_frame, text="❤️喜欢", command=lambda: self.rate_post(True), state="disabled", fg_color="green", width=120)
         self.like_btn.pack(side="left", padx=10)
 
-        self.dislike_btn = ctk.CTkButton(self.button_frame, text="💔 不喜欢 (-1)", command=lambda: self.rate_post(False), state="disabled", fg_color="red", width=120)
+        self.dislike_btn = ctk.CTkButton(self.button_frame, text="💔不喜欢", command=lambda: self.rate_post(False), state="disabled", fg_color="red", width=120)
         self.dislike_btn.pack(side="left", padx=10)
 
         # 5. 退出保存按钮
@@ -81,7 +136,7 @@ class App(ctk.CTk):
 
     def _fetch_thread(self):
         """子线程执行拉取任务"""
-        params = {"limit": 5, "page": 1}  # 你可以从config读取
+        params = {"limit": 1, "page": 1}  # 你可以从config读取
         self.posts = request_response(params)
         
         # 回到主线程更新 UI（CustomTkinter 线程安全写法）
@@ -115,7 +170,7 @@ class App(ctk.CTk):
             self.set_status(f"请评价第 {self.current_index + 1} 张")
         else:
             self.update_info_box("🎉 所有图片已评价完毕！")
-            self.set_status("完成！点【获取一批图片】继续下一轮")
+            self.set_status("完成！点【获取图片】继续下一轮")
             self.like_btn.configure(state="disabled")
             self.dislike_btn.configure(state="disabled")
 
@@ -175,6 +230,28 @@ class App(ctk.CTk):
         save_tags_library(tag_library_dir, tag_library_name, self.tag_library)
         logger.info("标签库已保存，程序退出")
         self.destroy()
+
+    def load_default_image(self):
+        """
+        加载默认图片到图片展示区
+        """
+        # 1. 获取默认图片路径
+        default_image_path = Path(__file__).parent.parent / "icon" / "default.jpg"
+        # 2. 转为ctkimage对象
+        default_image_pil = Image.open(default_image_path)
+        image_width, image_height = default_image_pil.size
+        default_image_ctk = ctk.CTkImage(
+            light_image= default_image_pil,
+            size= (image_width, image_height),
+        )
+        # 3. 加载到展示区
+        self.image_display_label.configure(
+            image = default_image_ctk,
+            text = "",
+        )
+        # 4. 缓存默认图像
+        self.default_image = default_image_ctk
+
 
 if __name__ == "__main__":
     # 仅用于独立测试 UI
